@@ -53,12 +53,16 @@ import {
   Contact,
   ChevronRight,
   UploadCloud,
+  LibraryBig,
+  HardDrive,
+  CalendarDays,
+  Filter,
 } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useDashboard, type AlertLog, type FeatureStatus } from './state/DashboardContext';
 
 type Severity = 'normal' | 'warning' | 'critical';
-type Page = 'Overview' | '105 Centers' | 'AI Alerts' | 'Analytics' | 'Settings' | 'Reports' | 'Agent Search';
+type Page = 'Overview' | '105 Centers' | 'AI Alerts' | 'Analytics' | 'Settings' | 'Reports' | 'Agent Search' | 'Media Vault';
 
 function sev(level: Severity) {
   if (level === 'critical') return 'border-red-500/40 bg-red-500/10 text-red-200';
@@ -94,6 +98,7 @@ const navItems: { label: Page; icon: ReactNode }[] = [
   { label: 'Settings', icon: <Settings size={18} /> },
   { label: 'Reports', icon: <FileText size={18} /> },
   { label: 'Agent Search', icon: <FolderSearch size={18} /> },
+  { label: 'Media Vault', icon: <LibraryBig size={18} /> },
 ];
 
 function OverviewPage() {
@@ -1061,6 +1066,215 @@ function ReportsPage() {
   );
 }
 
+// ─── Media Vault Page ────────────────────────────────────────────────────────
+const ALL_MEDIA = Array.from({ length: 240 }, (_, i) => {
+  const rng = seededRand((i + 1) * 2311);
+  const r = (min: number, max: number) => Math.floor(rng() * (max - min + 1)) + min;
+  const type: 'video' | 'audio' = i % 3 === 2 ? 'audio' : 'video';
+  const centerId = r(1, 105);
+  const day = r(1, 25);
+  const month = r(1, 3);
+  const hour = String(r(7, 19)).padStart(2, '0');
+  const min = String(r(0, 59)).padStart(2, '0');
+  const resolutions = ['720p', '1080p', '1080p', '4K'];
+  const bitrateKbps = [128, 192, 256, 320];
+  const flagged = r(0, 10) > 8;
+  const sentiments = ['Positive', 'Neutral', 'Negative'];
+  return {
+    id: `MV-${String(10000 + i).slice(1)}`,
+    type,
+    centerId,
+    date: `2026-0${month}-${String(day).padStart(2, '0')}`,
+    time: `${hour}:${min}`,
+    durationSec: type === 'video' ? r(30, 300) : r(10, 120),
+    sizeGB: type === 'video' ? (r(10, 80) / 10).toFixed(1) : undefined,
+    sizeMB: type === 'audio' ? r(5, 80) : undefined,
+    resolution: type === 'video' ? resolutions[r(0, 3)] : undefined,
+    bitrateKbps: type === 'audio' ? bitrateKbps[r(0, 3)] : undefined,
+    flagged,
+    sentiment: type === 'audio' ? sentiments[r(0, 2)] : undefined,
+    camera: type === 'video' ? `CAM-${r(1, 8)}` : undefined,
+    noiseDb: type === 'audio' ? r(38, 85) : undefined,
+    backupStatus: r(0, 10) > 2 ? 'Backed Up' : 'Pending',
+  };
+});
+
+function MediaVaultPage() {
+  const [tab, setTab] = useState<'all' | 'video' | 'audio'>('all');
+  const [centerFilter, setCenterFilter] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
+  const [flaggedOnly, setFlaggedOnly] = useState(false);
+  const [page, setPage] = useState(1);
+  const PER_PAGE = 20;
+
+  const filtered = useMemo(() => {
+    return ALL_MEDIA.filter((m) => {
+      if (tab !== 'all' && m.type !== tab) return false;
+      if (centerFilter && !String(m.centerId).includes(centerFilter)) return false;
+      if (dateFilter && !m.date.includes(dateFilter)) return false;
+      if (flaggedOnly && !m.flagged) return false;
+      return true;
+    });
+  }, [tab, centerFilter, dateFilter, flaggedOnly]);
+
+  const totalPages = Math.ceil(filtered.length / PER_PAGE);
+  const pageItems = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+
+  const videoCount = ALL_MEDIA.filter((m) => m.type === 'video').length;
+  const audioCount = ALL_MEDIA.filter((m) => m.type === 'audio').length;
+  const flaggedCount = ALL_MEDIA.filter((m) => m.flagged).length;
+  const totalVideoGB = ALL_MEDIA.filter((m) => m.type === 'video').reduce((s, m) => s + Number(m.sizeGB ?? 0), 0).toFixed(1);
+  const totalAudioMB = ALL_MEDIA.filter((m) => m.type === 'audio').reduce((s, m) => s + Number(m.sizeMB ?? 0), 0);
+
+  const sentColor: Record<string, string> = { Positive: 'text-cyan-300', Neutral: 'text-slate-300', Negative: 'text-red-300' };
+
+  return (
+    <div className="space-y-4">
+      {/* KPI row */}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {[
+          { label: 'Total Recordings', value: ALL_MEDIA.length, icon: <LibraryBig size={15} />, color: 'text-cyan-300' },
+          { label: 'Video Clips', value: videoCount, icon: <Film size={15} />, color: 'text-violet-300' },
+          { label: 'Audio Logs', value: audioCount, icon: <Mic2 size={15} />, color: 'text-violet-300' },
+          { label: 'Flagged', value: flaggedCount, icon: <CircleAlert size={15} />, color: 'text-red-300' },
+          { label: 'Storage Used', value: `${totalVideoGB} GB · ${totalAudioMB} MB`, icon: <HardDrive size={15} />, color: 'text-amber-300' },
+        ].map(({ label, value, icon, color }) => (
+          <div key={label} className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+            <div className={`mb-1 flex items-center gap-2 text-xs uppercase tracking-wider ${color} opacity-70`}>{icon} {label}</div>
+            <p className={`text-xl font-bold ${color}`}>{value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
+        {/* Type tabs */}
+        <div className="flex rounded-xl border border-slate-700 bg-slate-950/70 p-1">
+          {(['all', 'video', 'audio'] as const).map((t) => (
+            <button key={t} type="button" onClick={() => { setTab(t); setPage(1); }}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition ${
+                tab === t ? 'bg-cyan-500/20 text-cyan-200' : 'text-slate-400 hover:text-slate-200'
+              }`}>
+              {t === 'video' ? <Film size={12} /> : t === 'audio' ? <Mic2 size={12} /> : <LibraryBig size={12} />}
+              {t === 'all' ? 'All Media' : t === 'video' ? 'Video' : 'Audio'}
+            </button>
+          ))}
+        </div>
+        {/* Center filter */}
+        <div className="relative">
+          <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input value={centerFilter} onChange={(e) => { setCenterFilter(e.target.value); setPage(1); }}
+            placeholder="Center #" className="w-24 rounded-xl border border-slate-700 bg-slate-950/70 py-2 pl-8 pr-3 text-xs outline-none focus:border-cyan-400" />
+        </div>
+        {/* Date filter */}
+        <div className="relative">
+          <CalendarDays size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input value={dateFilter} onChange={(e) => { setDateFilter(e.target.value); setPage(1); }}
+            placeholder="Date (e.g. 2026-03)" className="w-44 rounded-xl border border-slate-700 bg-slate-950/70 py-2 pl-8 pr-3 text-xs outline-none focus:border-cyan-400" />
+        </div>
+        {/* Flagged toggle */}
+        <button type="button" onClick={() => { setFlaggedOnly(!flaggedOnly); setPage(1); }}
+          className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs transition ${
+            flaggedOnly ? 'border-red-500/40 bg-red-500/10 text-red-300' : 'border-slate-700 bg-slate-950/60 text-slate-400 hover:border-red-400/40'
+          }`}>
+          <Filter size={12} /> Flagged Only
+        </button>
+        <span className="ml-auto text-xs text-slate-400">{filtered.length} records</span>
+      </div>
+
+      {/* Table */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 overflow-hidden">
+        {/* Header */}
+        <div className="grid grid-cols-12 gap-2 border-b border-slate-800 bg-slate-950/60 px-4 py-2.5 text-[11px] uppercase tracking-wider text-slate-400">
+          <span className="col-span-1">Type</span>
+          <span className="col-span-1">ID</span>
+          <span className="col-span-1">Center</span>
+          <span className="col-span-2">Date &amp; Time</span>
+          <span className="col-span-1">Duration</span>
+          <span className="col-span-1">Size</span>
+          <span className="col-span-1">Quality</span>
+          <span className="col-span-1">Sentiment / dB</span>
+          <span className="col-span-1">Backup</span>
+          <span className="col-span-1">Flag</span>
+          <span className="col-span-1">Action</span>
+        </div>
+        {/* Rows */}
+        <div className="divide-y divide-slate-800/60">
+          {pageItems.length === 0 && (
+            <div className="px-4 py-12 text-center text-sm text-slate-500">No recordings match the current filters.</div>
+          )}
+          {pageItems.map((m) => (
+            <div key={m.id} className={`grid grid-cols-12 gap-2 items-center px-4 py-3 text-xs transition hover:bg-slate-800/30 ${
+              m.flagged ? 'border-l-2 border-red-500/50' : ''
+            }`}>
+              {/* Type icon */}
+              <div className="col-span-1">
+                {m.type === 'video'
+                  ? <span className="flex items-center gap-1 text-violet-300"><Film size={13} /> Vid</span>
+                  : <span className="flex items-center gap-1 text-violet-300"><Volume2 size={13} /> Aud</span>}
+              </div>
+              {/* ID */}
+              <span className="col-span-1 font-mono text-slate-300">{m.id}</span>
+              {/* Center */}
+              <span className="col-span-1 text-slate-200">C-{String(m.centerId).padStart(2, '0')}</span>
+              {/* Date & time */}
+              <span className="col-span-2 text-slate-300">{m.date} {m.time}</span>
+              {/* Duration */}
+              <span className="col-span-1 text-slate-300">
+                {m.durationSec >= 60 ? `${Math.floor(m.durationSec / 60)}m ${m.durationSec % 60}s` : `${m.durationSec}s`}
+              </span>
+              {/* Size */}
+              <span className="col-span-1 text-slate-400">
+                {m.type === 'video' ? `${m.sizeGB} GB` : `${m.sizeMB} MB`}
+              </span>
+              {/* Quality */}
+              <span className="col-span-1 text-slate-400">
+                {m.type === 'video' ? m.resolution : `${m.bitrateKbps} kbps`}
+              </span>
+              {/* Sentiment / dB */}
+              <span className={`col-span-1 ${m.type === 'audio' ? (sentColor[m.sentiment ?? ''] ?? 'text-slate-300') : 'text-slate-600'}`}>
+                {m.type === 'audio' ? `${m.sentiment} · ${m.noiseDb}dB` : `Cam ${m.camera}`}
+              </span>
+              {/* Backup */}
+              <span className={`col-span-1 ${m.backupStatus === 'Backed Up' ? 'text-cyan-400' : 'text-amber-400'}`}>
+                {m.backupStatus === 'Backed Up' ? '✓' : '⏳'} {m.backupStatus}
+              </span>
+              {/* Flag */}
+              <span className="col-span-1">
+                {m.flagged
+                  ? <span className="rounded-full bg-red-500/20 border border-red-500/30 px-1.5 py-0.5 text-[10px] text-red-300">⚠ Flag</span>
+                  : <span className="text-slate-600">—</span>}
+              </span>
+              {/* Action */}
+              <div className="col-span-1">
+                <button type="button" className="flex items-center gap-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 px-2 py-1 text-[11px] text-cyan-300 hover:bg-cyan-500/20 transition">
+                  <PlayCircle size={11} /> Play
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-slate-800 bg-slate-950/50 px-4 py-2">
+            <span className="text-xs text-slate-400">Page {page} of {totalPages}</span>
+            <div className="flex gap-2">
+              <button type="button" disabled={page === 1} onClick={() => setPage(page - 1)}
+                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-300 hover:border-cyan-400/40 disabled:opacity-30">
+                ← Prev
+              </button>
+              <button type="button" disabled={page === totalPages} onClick={() => setPage(page + 1)}
+                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-300 hover:border-cyan-400/40 disabled:opacity-30">
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Agent Search Page ────────────────────────────────────────────────────────
 const AGENT_CUSTOMERS = Array.from({ length: 60 }, (_, i) => {
   const rng = seededRand((i + 1) * 3571);
@@ -1399,6 +1613,7 @@ export default function App() {
     Settings: 'System Settings',
     Reports: 'Center Reports',
     'Agent Search': 'Agent Customer Search',
+    'Media Vault': 'Audio & Video Vault',
   };
   return (
     <div className="flex min-h-screen w-full bg-[#0f172a] text-slate-100">
@@ -1432,10 +1647,10 @@ export default function App() {
           <h2 className="text-sm font-semibold text-slate-100 shrink-0">{pageTitle[activePage]}</h2>
           {/* Quick-access media buttons */}
           <div className="flex items-center gap-1.5">
-            <button type="button" onClick={() => setActivePage('Agent Search')} title="Video Recordings" className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs transition ${ activePage === 'Agent Search' ? 'border-violet-400/50 bg-violet-500/15 text-violet-200' : 'border-slate-700 bg-slate-950/60 text-slate-400 hover:border-violet-400/40 hover:text-violet-200' }`}>
+            <button type="button" onClick={() => setActivePage('Media Vault')} title="Video Recordings" className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs transition ${ activePage === 'Media Vault' ? 'border-violet-400/50 bg-violet-500/15 text-violet-200' : 'border-slate-700 bg-slate-950/60 text-slate-400 hover:border-violet-400/40 hover:text-violet-200' }`}>
               <Film size={13} /> <span className="hidden sm:inline">Video</span>
             </button>
-            <button type="button" onClick={() => setActivePage('Agent Search')} title="Audio Recordings" className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs transition ${ activePage === 'Agent Search' ? 'border-violet-400/50 bg-violet-500/15 text-violet-200' : 'border-slate-700 bg-slate-950/60 text-slate-400 hover:border-violet-400/40 hover:text-violet-200' }`}>
+            <button type="button" onClick={() => setActivePage('Media Vault')} title="Audio Recordings" className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs transition ${ activePage === 'Media Vault' ? 'border-violet-400/50 bg-violet-500/15 text-violet-200' : 'border-slate-700 bg-slate-950/60 text-slate-400 hover:border-violet-400/40 hover:text-violet-200' }`}>
               <Mic2 size={13} /> <span className="hidden sm:inline">Audio</span>
             </button>
             <button type="button" onClick={() => setActivePage('Agent Search')} title="Facial Expressions" className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs transition ${ activePage === 'Agent Search' ? 'border-pink-400/50 bg-pink-500/15 text-pink-200' : 'border-slate-700 bg-slate-950/60 text-slate-400 hover:border-pink-400/40 hover:text-pink-200' }`}>
@@ -1476,6 +1691,7 @@ export default function App() {
           {activePage === 'Settings' && <SettingsPage />}
           {activePage === 'Reports' && <ReportsPage />}
           {activePage === 'Agent Search' && <AgentSearchPage />}
+          {activePage === 'Media Vault' && <MediaVaultPage />}
         </main>
       </div>
     </div>
