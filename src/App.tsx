@@ -60,6 +60,7 @@ import {
 } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useDashboard, type AlertLog, type FeatureStatus } from './state/DashboardContext';
+import { exportCenterReportPDF, exportMediaVaultPDF } from './utils/exportPDF';
 
 type Severity = 'normal' | 'warning' | 'critical';
 type Page = 'Overview' | '105 Centers' | 'AI Alerts' | 'Analytics' | 'Settings' | 'Reports' | 'Agent Search' | 'Media Vault';
@@ -780,8 +781,58 @@ function ReportsPage() {
           <span className={`status-dot ${liveCenter?.online ? 'bg-cyan-300 animate-pulse' : 'bg-red-500'}`} />
           {liveCenter?.online ? 'Online' : 'Offline'} · Queue: {liveCenter?.queueSize ?? 0} ppl
         </div>
-        <button type="button" className="ml-auto flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-2 text-xs text-slate-300 transition hover:border-cyan-400/40 hover:text-cyan-200">
-          <Download size={13} /> Export {period}
+        <button
+          type="button"
+          onClick={() => exportCenterReportPDF({
+            centerId: selectedId,
+            period,
+            online: liveCenter?.online ?? false,
+            queueSize: liveCenter?.queueSize ?? 0,
+            footage: {
+              motionEvents: report.footage.motionEvents,
+              threatDetections: report.footage.threatDetections,
+              tamperAttempts: report.footage.tamperAttempts,
+              cameraUptime: report.footage.cameraUptime,
+              recordedHrs: report.footage.recordedHrs,
+              aiDetections: report.footage.aiDetections,
+              videoClips: report.videoRecording.clipsRecorded,
+              storageGB: report.videoRecording.storageGB,
+              resolution: report.videoRecording.avgResolution,
+              cloudBackupPct: report.videoRecording.cloudBackupPct,
+            },
+            attendance: report.attendance,
+            voice: {
+              speechInteractions: report.voice.speechInteractions,
+              flaggedConversations: report.voice.flaggedConversations,
+              avgNoiseLevelDb: report.voice.avgNoiseLevelDb,
+              peakNoiseLevelDb: report.voice.peakNoiseLevelDb,
+              sentimentHappy: report.voice.sentimentHappy,
+              sentimentAngry: report.voice.sentimentAngry,
+              sentimentNeutral: report.voice.sentimentNeutral,
+              audioCount: report.audioRecording.capturedCount,
+              audioDurationHrs: report.audioRecording.totalDurationHrs,
+              noiseReducedPct: report.audioRecording.noiseReducedPct,
+            },
+            service: report.service,
+            alerts: report.alerts,
+            features: report.features,
+            facial: {
+              totalFacesScanned: report.facialExpression.totalFacesScanned,
+              uniqueIndividuals: report.facialExpression.uniqueIndividuals,
+              vipRecognitions: report.facialExpression.vipRecognitions,
+              unknownFaces: report.facialExpression.unknownFaces,
+              avgConfidencePct: report.facialExpression.avgConfidencePct,
+              happy: report.facialExpression.expressionHappy,
+              neutral: report.facialExpression.expressionNeutral,
+              angry: report.facialExpression.expressionAngry,
+              surprised: report.facialExpression.expressionSurprised,
+              fearful: report.facialExpression.expressionFearful,
+            },
+            uptime: report.uptime,
+          })}
+          className="ml-auto flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-2 text-xs text-slate-300 transition hover:border-cyan-400/40 hover:text-cyan-200"
+        >
+          <Download size={13} /> Export PDF
         </button>
       </div>
 
@@ -1180,6 +1231,18 @@ function MediaVaultPage() {
           <Filter size={12} /> Flagged Only
         </button>
         <span className="ml-auto text-xs text-slate-400">{filtered.length} records</span>
+        <button
+          type="button"
+          onClick={() => exportMediaVaultPDF(
+            filtered,
+            `${tab === 'all' ? 'All Media' : tab === 'video' ? 'Video' : 'Audio'}${
+              centerFilter ? ` · Center ${centerFilter}` : ''
+            }${dateFilter ? ` · ${dateFilter}` : ''}${flaggedOnly ? ' · Flagged Only' : ''}`
+          )}
+          className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs text-slate-300 transition hover:border-cyan-400/40 hover:text-cyan-200"
+        >
+          <Download size={13} /> Export PDF
+        </button>
       </div>
 
       {/* Table */}
