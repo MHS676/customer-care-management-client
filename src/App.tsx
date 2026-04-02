@@ -1371,83 +1371,61 @@ function MediaVaultPage() {
       </div>
       )}
 
-      {/* Text File Upload Panel */}
+      {/* Text File List */}
       {tab === 'text' && (
-        <div className="space-y-4">
-          {/* Drop / upload zone */}
-          <div
-            className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-cyan-400/30 bg-cyan-500/5 p-10 text-center transition hover:border-cyan-400/50 hover:bg-cyan-500/8 cursor-pointer"
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => { e.preventDefault(); handleFileUpload(e.dataTransfer.files); }}
-          >
-            <UploadCloud size={36} className="mb-3 text-cyan-400/60" />
-            <p className="text-sm font-medium text-slate-300">Drop .txt files here, or click to browse</p>
-            <p className="mt-1 text-xs text-slate-500">Only plain text (.txt) files are accepted</p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".txt,text/plain"
-              multiple
-              className="hidden"
-              onChange={(e) => handleFileUpload(e.target.files)}
-            />
-          </div>
-
-          {/* File list */}
-          {txtFiles.length > 0 && (
-            <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70">
-              <div className="flex items-center justify-between border-b border-slate-800 bg-slate-950/60 px-4 py-3">
-                <h3 className="flex items-center gap-2 text-sm font-semibold text-cyan-200">
-                  <FileText size={14} /> Uploaded Text Files
-                  <span className="ml-1 rounded-full bg-cyan-500/20 px-2 py-0.5 text-[10px] text-cyan-300">{txtFiles.length}</span>
-                </h3>
+        <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70">
+          <div className="flex items-center justify-between border-b border-slate-800 bg-slate-950/60 px-4 py-3">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-cyan-200">
+              <FileText size={14} /> Text Files
+              {txtFiles.length > 0 && (
+                <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 text-[10px] text-cyan-300">{txtFiles.length}</span>
+              )}
+            </h3>
+            <div className="flex items-center gap-2">
+              {txtFiles.length > 0 && (
                 <button type="button" onClick={() => { setTxtFiles([]); setViewingFile(null); }} className="text-xs text-slate-500 transition hover:text-red-300">Remove all</button>
-              </div>
-              <div className="divide-y divide-slate-800/60">
-                {txtFiles.map((f) => (
-                  <div key={f.id} className="group flex items-start gap-4 px-4 py-3 text-xs hover:bg-slate-800/30 transition">
-                    <FileText size={20} className="mt-0.5 shrink-0 text-cyan-400/60" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-slate-200 truncate">{f.name}</p>
-                      <p className="mt-0.5 text-slate-400 truncate italic">{f.preview}{f.content.length > 120 ? '...' : ''}</p>
-                      <p className="mt-1 text-slate-500">{(f.size / 1024).toFixed(1)} KB &middot; Added {f.date}</p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setViewingFile(viewingFile === f.id ? null : f.id)}
-                        className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-cyan-300 transition hover:bg-cyan-500/20"
-                      >
-                        {viewingFile === f.id ? 'Close' : 'View'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setTxtFiles((prev) => prev.filter((x) => x.id !== f.id)); if (viewingFile === f.id) setViewingFile(null); }}
-                        className="rounded-lg border border-slate-700 px-3 py-1.5 text-slate-400 transition hover:border-red-400/50 hover:text-red-300"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {/* Inline viewer */}
-                {viewingFile !== null && (() => {
-                  const f = txtFiles.find((x) => x.id === viewingFile);
-                  if (!f) return null;
-                  return (
-                    <div className="border-t border-slate-700 bg-slate-950/60 px-4 py-4">
-                      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-cyan-300">{f.name} — Contents</p>
-                      <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-xl border border-slate-700 bg-slate-900/80 p-4 text-xs text-slate-300 font-mono leading-relaxed">{f.content}</pre>
-                    </div>
-                  );
-                })()}
-              </div>
+              )}
+              <button type="button" onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-xs text-slate-300 transition hover:border-cyan-400/40 hover:text-cyan-200">
+                <UploadCloud size={12} /> Add File
+              </button>
+              <input ref={fileInputRef} type="file" accept=".txt,text/plain" multiple className="hidden" onChange={(e) => handleFileUpload(e.target.files)} />
             </div>
-          )}
-
-          {txtFiles.length === 0 && (
-            <p className="text-center text-xs text-slate-500">No text files uploaded yet.</p>
+          </div>
+          {txtFiles.length === 0 ? (
+            <div className="px-4 py-12 text-center text-sm text-slate-500">No text files added yet. Click <strong className="text-slate-400">Add File</strong> to upload a .txt file.</div>
+          ) : (
+            <div className="divide-y divide-slate-800/60">
+              {txtFiles.map((f) => (
+                <div key={f.id} className="group flex items-center gap-4 px-4 py-3 text-xs hover:bg-slate-800/30 transition">
+                  <FileText size={16} className="shrink-0 text-cyan-400/60" />
+                  <span className="w-56 shrink-0 truncate font-medium text-slate-200">{f.name}</span>
+                  <span className="flex-1 min-w-0 truncate italic text-slate-400">{f.preview}{f.content.length > 120 ? '…' : ''}</span>
+                  <span className="shrink-0 tabular-nums text-slate-500">{(f.size / 1024).toFixed(1)} KB</span>
+                  <span className="shrink-0 text-slate-500">{f.date}</span>
+                  <div className="flex shrink-0 items-center gap-1.5 opacity-0 group-hover:opacity-100 transition">
+                    <button type="button" onClick={() => setViewingFile(viewingFile === f.id ? null : f.id)}
+                      className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-cyan-300 transition hover:bg-cyan-500/20">
+                      {viewingFile === f.id ? 'Close' : 'View'}
+                    </button>
+                    <button type="button" onClick={() => { setTxtFiles((p) => p.filter((x) => x.id !== f.id)); if (viewingFile === f.id) setViewingFile(null); }}
+                      className="rounded-lg border border-slate-700 px-2.5 py-1 text-slate-400 transition hover:border-red-400/50 hover:text-red-300">
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {viewingFile !== null && (() => {
+                const f = txtFiles.find((x) => x.id === viewingFile);
+                if (!f) return null;
+                return (
+                  <div className="border-t border-slate-700 bg-slate-950/60 px-4 py-4">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-cyan-300">{f.name}</p>
+                    <pre className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-xl border border-slate-700 bg-slate-900/80 p-4 text-xs text-slate-300 font-mono leading-relaxed">{f.content}</pre>
+                  </div>
+                );
+              })()}
+            </div>
           )}
         </div>
       )}
