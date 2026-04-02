@@ -57,13 +57,18 @@ import {
   HardDrive,
   CalendarDays,
   Filter,
+  Megaphone,
+  MessageSquare,
+  PauseCircle,
+  Radio,
+  StopCircle,
 } from 'lucide-react';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useDashboard, type AlertLog, type FeatureStatus } from './state/DashboardContext';
 import { exportCenterReportPDF, exportMediaVaultPDF } from './utils/exportPDF';
 
 type Severity = 'normal' | 'warning' | 'critical';
-type Page = 'Overview' | '105 Centers' | 'AI Alerts' | 'Analytics' | 'Settings' | 'Reports' | 'Agent Search' | 'Media Vault';
+type Page = 'Overview' | '105 Centers' | 'AI Alerts' | 'Analytics' | 'Settings' | 'Reports' | 'Agent Search' | 'Media Vault' | 'Text to Speech';
 
 function sev(level: Severity) {
   if (level === 'critical') return 'border-red-500/40 bg-red-500/10 text-red-200';
@@ -100,6 +105,7 @@ const navItems: { label: Page; icon: ReactNode }[] = [
   { label: 'Reports', icon: <FileText size={18} /> },
   { label: 'Agent Search', icon: <FolderSearch size={18} /> },
   { label: 'Media Vault', icon: <LibraryBig size={18} /> },
+  { label: 'Text to Speech', icon: <Radio size={18} /> },
 ];
 
 function OverviewPage() {
@@ -1665,6 +1671,278 @@ function AgentSearchPage() {
   function setResults_demo() { setQuery('A'); setTimeout(() => setQuery(''), 50); }
 }
 
+// ─── Text to Speech Page ──────────────────────────────────────────────────────
+const TTS_WAVE = [8, 20, 14, 28, 18, 10, 24, 16, 22, 12, 26, 18, 14, 24, 10, 20];
+
+const TTS_QUICK_PHRASES = [
+  { label: 'Queue Overflow',  text: 'Attention all staff. Queue overflow detected at counter 3. Please redirect customers to available counters immediately.' },
+  { label: 'Security Alert', text: 'Security alert. All staff please remain calm and follow standard security procedures. Security personnel are responding now.' },
+  { label: 'Wait Time',      text: 'Customer service announcement. Current estimated wait time is approximately 15 minutes. We apologise for any inconvenience.' },
+  { label: 'Kiosk Offline',  text: 'Notice: The self-service kiosk is temporarily unavailable. Please proceed to the main service desk for assistance. Thank you.' },
+  { label: 'VIP Arrival',    text: 'VIP customer arrival notification. Please ensure premium service lanes are prepared and senior staff are available immediately.' },
+  { label: 'Closing Soon',   text: 'Attention customers. This service center will be closing in 15 minutes. Please proceed to a counter or visit us again tomorrow.' },
+  { label: 'Fire Drill',     text: 'Attention all staff and customers. This is a fire drill. Please proceed calmly to the nearest emergency exit now.' },
+  { label: 'System Restart', text: 'IT maintenance notice. The ticketing system will restart in 5 minutes. Please save your current work and prepare for a brief outage.' },
+];
+
+function TextToSpeechPage() {
+  const [text, setText] = useState('');
+  const [selectedVoice, setSelectedVoice] = useState(0);
+  const [rate, setRate] = useState(1);
+  const [pitch, setPitch] = useState(1);
+  const [vol, setVol] = useState(1);
+  const [speaking, setSpeaking] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [centerTarget, setCenterTarget] = useState('all');
+  const [history, setHistory] = useState<Array<{ id: number; text: string; originalText: string; center: string; time: string }>>([]);
+
+  useEffect(() => {
+    const loadVoices = () => {
+      const v = window.speechSynthesis.getVoices();
+      if (v.length) setVoices(v);
+    };
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    return () => { window.speechSynthesis.cancel(); };
+  }, []);
+
+  const engVoices = useMemo(() => {
+    const en = voices.filter((v) => v.lang.startsWith('en'));
+    return en.length ? en : voices;
+  }, [voices]);
+
+  const allIds = useMemo(() => Array.from({ length: 105 }, (_, i) => i + 1), []);
+
+  const play = () => {
+    if (!text.trim()) return;
+    if (paused && window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+      setPaused(false);
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text.trim());
+    if (engVoices[selectedVoice]) utter.voice = engVoices[selectedVoice];
+    utter.rate = rate;
+    utter.pitch = pitch;
+    utter.volume = vol;
+    utter.onstart = () => setSpeaking(true);
+    utter.onend = () => { setSpeaking(false); setPaused(false); };
+    utter.onerror = () => { setSpeaking(false); setPaused(false); };
+    window.speechSynthesis.speak(utter);
+    const cLabel = centerTarget === 'all' ? 'All 105 Centers' : `Center ${String(centerTarget).padStart(2, '0')}`;
+    const snippet = text.trim().length > 90 ? text.trim().slice(0, 90) + '\u2026' : text.trim();
+    setHistory((prev) => [{ id: Date.now(), text: snippet, originalText: text.trim(), center: cLabel, time: new Date().toLocaleTimeString('en-GB') }, ...prev].slice(0, 30));
+  };
+
+  const pauseSpeech = () => { if (speaking && !paused) { window.speechSynthesis.pause(); setPaused(true); } };
+  const stopSpeech  = () => { window.speechSynthesis.cancel(); setSpeaking(false); setPaused(false); };
+
+  const sliders: { label: string; value: number; setter: (v: number) => void; min: number; max: number; step: number; display: string }[] = [
+    { label: 'Speed',  value: rate,  setter: setRate,  min: 0.5, max: 2,   step: 0.1,  display: `${rate.toFixed(1)}\u00d7` },
+    { label: 'Pitch',  value: pitch, setter: setPitch, min: 0.5, max: 2,   step: 0.1,  display: pitch.toFixed(1) },
+    { label: 'Volume', value: vol,   setter: setVol,   min: 0,   max: 1,   step: 0.05, display: `${Math.round(vol * 100)}%` },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* KPI row */}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: 'Broadcasts Today',  value: history.length || 0,                         icon: <Radio size={15} />,     color: 'text-cyan-300'   },
+          { label: 'Voice Engine',      value: engVoices.length > 0 ? 'Ready' : 'Loading\u2026', icon: <Cpu size={15} />,      color: 'text-green-300'  },
+          { label: 'Available Voices',  value: engVoices.length || '\u2014',                icon: <Mic2 size={15} />,     color: 'text-violet-300' },
+          { label: 'Last Broadcast',    value: history.length > 0 ? history[0].time : '\u2014', icon: <AlarmClock size={15} />, color: 'text-amber-300'  },
+        ].map(({ label, value, icon, color }) => (
+          <div key={label} className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+            <div className={`mb-1 flex items-center gap-2 text-xs uppercase tracking-wider ${color} opacity-70`}>{icon} {label}</div>
+            <p className={`text-xl font-bold ${color}`}>{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-12">
+        {/* Message Composer */}
+        <div className="xl:col-span-7 space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-cyan-200">
+            <MessageSquare size={15} /> Broadcast Message Composer
+          </h3>
+          <div className="relative">
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Type your announcement message here\u2026"
+              rows={6}
+              className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/30"
+            />
+            <span className="pointer-events-none absolute bottom-2.5 right-3 select-none text-[10px] text-slate-500">{text.length} chars</span>
+          </div>
+          <div>
+            <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Quick Announcement Templates</p>
+            <div className="flex flex-wrap gap-2">
+              {TTS_QUICK_PHRASES.map((q) => (
+                <button
+                  key={q.label}
+                  type="button"
+                  onClick={() => setText(q.text)}
+                  className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-xs text-slate-300 transition hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-200"
+                >
+                  {q.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {text && (
+            <button type="button" onClick={() => setText('')} className="text-xs text-slate-500 transition hover:text-red-300">
+              \u2715 Clear message
+            </button>
+          )}
+        </div>
+
+        {/* Voice Controls */}
+        <div className="xl:col-span-5 space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-cyan-200">
+            <Volume2 size={15} /> Voice &amp; Broadcast Controls
+          </h3>
+          <div>
+            <label className="mb-1.5 block text-xs text-slate-400">Voice Engine</label>
+            <select
+              value={selectedVoice}
+              onChange={(e) => setSelectedVoice(Number(e.target.value))}
+              className="w-full cursor-pointer rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-400"
+            >
+              {engVoices.length === 0 && <option>Loading voices\u2026</option>}
+              {engVoices.map((v, i) => (
+                <option key={i} value={i} className="bg-slate-900">{v.name} ({v.lang})</option>
+              ))}
+            </select>
+          </div>
+          {sliders.map(({ label, value, setter, min, max, step, display }) => (
+            <div key={label}>
+              <div className="mb-1.5 flex items-center justify-between text-xs">
+                <span className="text-slate-400">{label}</span>
+                <span className="tabular-nums font-medium text-cyan-200">{display}</span>
+              </div>
+              <input
+                type="range" min={min} max={max} step={step} value={value}
+                onChange={(e) => setter(Number(e.target.value))}
+                className="w-full cursor-pointer accent-cyan-400"
+              />
+            </div>
+          ))}
+          <div>
+            <label className="mb-1.5 block text-xs text-slate-400">Broadcast Target</label>
+            <select
+              value={centerTarget}
+              onChange={(e) => setCenterTarget(e.target.value)}
+              className="w-full cursor-pointer rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-400"
+            >
+              <option value="all">\ud83d\udce1\u2002All 105 Centers</option>
+              {allIds.map((id) => (
+                <option key={id} value={String(id)} className="bg-slate-900">Center {String(id).padStart(2, '0')}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              type="button"
+              onClick={play}
+              disabled={!text.trim()}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${
+                !text.trim()
+                  ? 'cursor-not-allowed border border-slate-800 bg-slate-950/40 text-slate-600'
+                  : speaking && !paused
+                  ? 'border border-cyan-400/60 bg-cyan-500/20 text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.25)]'
+                  : 'border border-cyan-500/40 bg-cyan-500/15 text-cyan-200 hover:border-cyan-400/60 hover:bg-cyan-500/25'
+              }`}
+            >
+              {speaking && !paused ? (
+                <><span className="status-dot animate-pulse bg-cyan-300" /> Speaking\u2026</>
+              ) : paused ? (
+                <><PlayCircle size={16} /> Resume</>
+              ) : (
+                <><Megaphone size={16} /> Broadcast</>
+              )}
+            </button>
+            <button
+              type="button" onClick={pauseSpeech}
+              disabled={!speaking || paused}
+              title="Pause"
+              className="rounded-xl border border-slate-700 bg-slate-950/60 p-3 text-slate-300 transition hover:border-amber-400/50 hover:text-amber-200 disabled:cursor-not-allowed disabled:opacity-25"
+            >
+              <PauseCircle size={18} />
+            </button>
+            <button
+              type="button" onClick={stopSpeech}
+              disabled={!speaking && !paused}
+              title="Stop"
+              className="rounded-xl border border-slate-700 bg-slate-950/60 p-3 text-slate-300 transition hover:border-red-400/50 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-25"
+            >
+              <StopCircle size={18} />
+            </button>
+          </div>
+          {/* Waveform / status bar */}
+          <div className={`flex h-10 items-center justify-center gap-0.5 rounded-xl border transition ${
+            speaking && !paused ? 'border-cyan-500/30 bg-cyan-500/5' : 'border-slate-800 bg-slate-950/30'
+          }`}>
+            {speaking && !paused ? (
+              TTS_WAVE.map((h, i) => (
+                <div
+                  key={i}
+                  className="w-1 rounded-full bg-cyan-400 animate-pulse"
+                  style={{ height: `${h}px`, animationDelay: `${i * 60}ms`, animationDuration: '0.8s' }}
+                />
+              ))
+            ) : paused ? (
+              <span className="flex items-center gap-1.5 text-xs text-amber-300"><PauseCircle size={13} /> Paused</span>
+            ) : (
+              <span className="text-xs text-slate-500">Awaiting broadcast\u2026</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Broadcast History */}
+      <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70">
+        <div className="flex items-center justify-between border-b border-slate-800 bg-slate-950/60 px-4 py-3">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-cyan-200">
+            <Radio size={14} /> Broadcast History
+            {history.length > 0 && (
+              <span className="ml-1 rounded-full bg-cyan-500/20 px-2 py-0.5 text-[10px] text-cyan-300">{history.length}</span>
+            )}
+          </h3>
+          {history.length > 0 && (
+            <button type="button" onClick={() => setHistory([])} className="text-xs text-slate-500 transition hover:text-red-300">Clear history</button>
+          )}
+        </div>
+        {history.length === 0 ? (
+          <div className="py-10 text-center text-xs text-slate-500">No broadcasts yet. Type a message and click Broadcast.</div>
+        ) : (
+          <div className="max-h-72 divide-y divide-slate-800/60 overflow-y-auto">
+            {history.map((item, i) => (
+              <div key={item.id} className="group flex items-center gap-4 px-4 py-3 text-xs transition hover:bg-slate-800/30">
+                <span className="w-5 shrink-0 text-center font-mono text-slate-500">#{history.length - i}</span>
+                <span className="flex-1 min-w-0 truncate text-slate-300">{item.text}</span>
+                <span className="shrink-0 whitespace-nowrap rounded-lg border border-violet-400/30 bg-violet-500/10 px-2 py-0.5 text-violet-300">{item.center}</span>
+                <span className="shrink-0 tabular-nums text-slate-400">{item.time}</span>
+                <button
+                  type="button"
+                  onClick={() => setText(item.originalText)}
+                  title="Load this message"
+                  className="shrink-0 text-slate-600 opacity-0 transition group-hover:opacity-100 hover:text-cyan-300"
+                >
+                  <PlayCircle size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [activePage, setActivePage] = useState<Page>('Overview');
   const { activeAlerts } = useDashboard();
@@ -1677,6 +1955,7 @@ export default function App() {
     Reports: 'Center Reports',
     'Agent Search': 'Agent Customer Search',
     'Media Vault': 'Audio & Video Vault',
+    'Text to Speech': 'Text to Speech Broadcast',
   };
   return (
     <div className="flex min-h-screen w-full bg-[#0f172a] text-slate-100">
@@ -1719,6 +1998,9 @@ export default function App() {
             <button type="button" onClick={() => setActivePage('Agent Search')} title="Facial Expressions" className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs transition ${ activePage === 'Agent Search' ? 'border-pink-400/50 bg-pink-500/15 text-pink-200' : 'border-slate-700 bg-slate-950/60 text-slate-400 hover:border-pink-400/40 hover:text-pink-200' }`}>
               <ScanFace size={13} /> <span className="hidden sm:inline">Faces</span>
             </button>
+            <button type="button" onClick={() => setActivePage('Text to Speech')} title="Text to Speech Broadcast" className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs transition ${ activePage === 'Text to Speech' ? 'border-cyan-400/50 bg-cyan-500/15 text-cyan-200' : 'border-slate-700 bg-slate-950/60 text-slate-400 hover:border-cyan-400/40 hover:text-cyan-200' }`}>
+              <Radio size={13} /> <span className="hidden sm:inline">TTS</span>
+            </button>
           </div>
           <div className="flex flex-1 items-center justify-end gap-2">
             <div className="relative hidden max-w-xs flex-1 sm:block">
@@ -1755,6 +2037,7 @@ export default function App() {
           {activePage === 'Reports' && <ReportsPage />}
           {activePage === 'Agent Search' && <AgentSearchPage />}
           {activePage === 'Media Vault' && <MediaVaultPage />}
+          {activePage === 'Text to Speech' && <TextToSpeechPage />}
         </main>
       </div>
     </div>
