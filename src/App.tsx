@@ -59,11 +59,12 @@ import {
   Filter,
   Megaphone,
   MessageSquare,
+  MicOff,
   PauseCircle,
   Radio,
   StopCircle,
 } from 'lucide-react';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useDashboard, type AlertLog, type FeatureStatus } from './state/DashboardContext';
 import { exportCenterReportPDF, exportMediaVaultPDF } from './utils/exportPDF';
 
@@ -1697,6 +1698,44 @@ function TextToSpeechPage() {
   const [centerTarget, setCenterTarget] = useState('all');
   const [history, setHistory] = useState<Array<{ id: number; text: string; originalText: string; center: string; time: string }>>([]);
 
+  // ── Speech-to-Text (audio → text) ──────────────────────────────────────────
+  const [listening, setListening] = useState(false);
+  const [interim, setInterim] = useState('');
+  const recogRef = useRef<any>(null);
+  const sttSupported = typeof window !== 'undefined' &&
+    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+
+  const startListening = () => {
+    if (!sttSupported || listening) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR: any = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = 'en-US';
+    rec.onstart = () => setListening(true);
+    rec.onresult = (e: any) => {
+      let final = '';
+      let inter = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) final += e.results[i][0].transcript;
+        else inter += e.results[i][0].transcript;
+      }
+      if (final) setText((prev) => (prev ? prev + ' ' + final.trim() : final.trim()));
+      setInterim(inter);
+    };
+    rec.onerror = () => { setListening(false); setInterim(''); };
+    rec.onend   = () => { setListening(false); setInterim(''); };
+    recogRef.current = rec;
+    rec.start();
+  };
+
+  const stopListening = () => {
+    recogRef.current?.stop();
+    setListening(false);
+    setInterim('');
+  };
+
   useEffect(() => {
     const loadVoices = () => {
       const v = window.speechSynthesis.getVoices();
@@ -1768,16 +1807,62 @@ function TextToSpeechPage() {
           <h3 className="flex items-center gap-2 text-sm font-semibold text-cyan-200">
             <MessageSquare size={15} /> Broadcast Message Composer
           </h3>
+
+          {/* Textarea */}
           <div className="relative">
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Type your announcement message here\u2026"
+              placeholder="Type your announcement, or click Voice Input to speak..."
               rows={6}
               className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/30"
             />
             <span className="pointer-events-none absolute bottom-2.5 right-3 select-none text-[10px] text-slate-500">{text.length} chars</span>
           </div>
+
+          {/* Audio-to-text mic row */}
+          <div className={`flex flex-wrap items-center gap-3 rounded-xl border px-3 py-2.5 transition ${
+            listening ? 'border-red-400/50 bg-red-500/5' : 'border-slate-700 bg-slate-950/50'
+          }`}>
+            <button
+              type="button"
+              onClick={listening ? stopListening : startListening}
+              disabled={!sttSupported}
+              title={!sttSupported ? 'Speech recognition not supported in this browser' : listening ? 'Stop recording' : 'Start voice input'}
+              className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition ${
+                !sttSupported
+                  ? 'cursor-not-allowed border border-slate-800 text-slate-600'
+                  : listening
+                  ? 'border border-red-400/50 bg-red-500/15 text-red-300 hover:bg-red-500/25'
+                  : 'border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 hover:border-cyan-400/60 hover:bg-cyan-500/20'
+              }`}
+            >
+              {listening ? <><MicOff size={13} /> Stop Recording</> : <><Mic2 size={13} /> Voice Input</>}
+            </button>
+
+            {listening && (
+              <div className="flex items-center gap-1">
+                {TTS_WAVE.slice(0, 12).map((h, i) => (
+                  <div
+                    key={i}
+                    className="w-0.5 rounded-full bg-red-400 animate-pulse"
+                    style={{ height: `${Math.max(Math.round(h * 0.55), 4)}px`, animationDelay: `${i * 70}ms`, animationDuration: '0.6s' }}
+                  />
+                ))}
+                <span className="ml-2 animate-pulse text-xs text-red-300">Listening...</span>
+              </div>
+            )}
+            {!listening && sttSupported && !interim && (
+              <span className="text-xs text-slate-500">Press Voice Input and speak — transcript appends to the message above.</span>
+            )}
+            {!listening && !sttSupported && (
+              <span className="text-xs text-slate-500">Speech recognition not available in this browser.</span>
+            )}
+            {interim && (
+              <span className="flex-1 truncate text-xs italic text-slate-400">"{interim}"</span>
+            )}
+          </div>
+
           <div>
             <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Quick Announcement Templates</p>
             <div className="flex flex-wrap gap-2">
@@ -1795,7 +1880,7 @@ function TextToSpeechPage() {
           </div>
           {text && (
             <button type="button" onClick={() => setText('')} className="text-xs text-slate-500 transition hover:text-red-300">
-              \u2715 Clear message
+              Clear message
             </button>
           )}
         </div>
